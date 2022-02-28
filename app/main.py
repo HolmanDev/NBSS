@@ -37,6 +37,7 @@ from datetime import datetime
 # Color over time
 # New time object
 # Move orbit visualization to seperate thread
+# Body data should not be stored in "simulation"
 
 cachePath = "cache/"
 

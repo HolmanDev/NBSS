@@ -221,7 +221,7 @@ class settings:
     visualizeEnabled = False
     pathLength = 10000 # Number of stored positions to be visualized
     dryRunEnabled = False
-    logPath = "results/packets/"# "C:/Users/simon/Desktop/GA/Data/2 Cam/Sim1/" #remove "packets/" and make that implicit
+    logPath = "results/packets/" #"C:/Users/simon/Desktop/GA/Data/2 Cam/Sim1/" ##  #remove "packets/" and make that implicit
     showNth = 1 # Display the nth packet data
 
     # Advanced

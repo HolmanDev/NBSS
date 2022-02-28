@@ -103,6 +103,9 @@ class visualization:
         for n in range(numBodies):
             offsetPositions = positions[n]
             if(self.lockedBody != "" and self.lockedBody in names):
+                #com = np.zeros(3)
+                #for n in range(numBodies):
+                #    com = com + positions[n] * 
                 origin = positions[names.index(self.lockedBody)]
                 offsetPositions = offsetPositions - origin
             XnY = offsetPositions[0:2, :]

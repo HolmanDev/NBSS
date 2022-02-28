@@ -33,3 +33,7 @@ def sqrMag(vector):
 def fastDistVec3(origin, target):
     vector = target - origin
     return sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2])
+
+# Magnitude of 2D vector
+def mag2d(vec2d):
+    return sqrt(vec2d[0] * vec2d[0] + vec2d[1] * vec2d[1])
