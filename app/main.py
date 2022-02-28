@@ -15,30 +15,6 @@ import json
 import pandas as pd
 from datetime import datetime
 
-# Remember to reset the bodies for each simulation
-# Add visualizer for imported data over time.
-# Make possible to both log and visualize
-# Add 'continue' functionality
-# Fix perpendicular view (and add UI option)
-# Add calculation for minDist
-# Add import settings functionality
-# Fix the deselect reselect bug
-# Async write (?)
-# Make the date format into a function
-# Fix "QCoreApplication::exec: The event loop is already running" error
-# New file for logger
-# Reset functionality
-# Research join quirks
-# Show distance live
-# Importer for SPV data format
-# Fix visualizer close
-# Browse for log paths
-# Standardize log format?
-# Color over time
-# New time object
-# Move orbit visualization to seperate thread
-# Body data should not be stored in "simulation"
-
 cachePath = "cache/"
 
 activeSettings = uiBack.settings()
