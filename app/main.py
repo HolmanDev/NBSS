@@ -1,6 +1,5 @@
 import numpy as np
 import simulation as sim
-from simulation import body, packet
 import visualizer as vis
 import libs.vectors as vec
 import libs.physics as phy
@@ -8,19 +7,17 @@ import time
 import pathlib
 import threading
 import multiprocessing as mp
-#import yappi
 import uiBackend as uiBack
 import os
-import json
-import pandas as pd
 from datetime import datetime
+#import yappi
 
 cachePath = "cache/"
 
 activeSettings = uiBack.settings()
 activeData = uiBack.data()
 sim1 = sim.simulation()
-sim1.minDist = 0#4.0 * phy.SR #10 * phy.au
+sim1.minDist = 0 #4.0 * phy.SR #10 * phy.au
 sim1.collisionLogPath = "results/collisions/"
 simulationProcesses = []
 
@@ -57,8 +54,8 @@ def visualize():
     awaitMessageThread = threading.Thread(target=awaitMessage, name='awaiter', args=(mainQueue, 1))
     awaitMessageThread.start()
     # Show the plot (until it is closed)
-    vis.plt.show()
-    #calcProcess.join()
+    vis.plt.show() #! Split into another process?
+    #calcProcess.join() #! should I join calcProcess here, or is it automatically terminated?
 
 # Make this into its own process too.
 def dryRun(path):
@@ -88,19 +85,19 @@ def log(path, packetInterval, mainQueue, calcPipeConnection):
     while(True):
         now = datetime.now()
         if(now - lastTime).total_seconds() >= packetInterval or packet_index == 0:
-            # Receive message from pipe and clear it (yes, pipes are like narrow queues)
+            # Receive message from pipe and clear it
             try:
                 calcPipeConnection.poll(None) # Await packet
                 while calcPipeConnection.poll():
                     try:
                         msg = calcPipeConnection.recv()
-                        if msg[2] != "default": # Needed?
+                        if msg[2] != "default": #! Needed?
                             mainQueue.put('collided')
                             return
-                    except:
+                    except: #! Should catch a specified type of error
                         break
-            except:
-                return         
+            except: #! Should catch a specified type of error
+                return
             # Create log file
             filename = f"{path}packet_{packet_index}_{now.year}-{now.month}-{now.day}T{now.hour}-{now.minute}-{now.second}.txt"
             with open(filename, "w") as f:
@@ -117,14 +114,13 @@ def log(path, packetInterval, mainQueue, calcPipeConnection):
             packet_index = packet_index + 1
             lastTime = datetime.now() # New time necessary due to recv()
 
-def readLog(path):
-    #sim1.positions = sim1.genPositions(snapsPerFrame, stepsPerSnap, timestep)
+def snapshot(path):
     vis1 = vis.visualization()
     vis1.setBoundries([0,0,0], activeSettings.zoom)
     vis1.lockedBody = activeSettings.focusBody
     vis1.markOrigin("+")
-    vis1.readLog(path, activeSettings.showNth)
-    vis.plt.show() # Split into another process?
+    vis1.visualizeLog(path, activeSettings.showNth)
+    vis.plt.show() #! Split into another process?
 
 def logAndVisualize(path):
     mainQueue = mp.Queue()
@@ -154,7 +150,7 @@ def startSimulation():
         dryRun(activeSettings.logPath)
     if(activeSettings.visualizeEnabled):
         visualize()
-    #logAndVisualize(logPath)
+    #! Add option for logging and visualizing simultaneously
 
 def stopSimulation():
     global simulationProcesses
@@ -162,7 +158,7 @@ def stopSimulation():
         process.terminate()
     simulationProcesses = []
 
-def gatherData(fileNames):
+def gatherBodyData(fileNames):
     activeData.bodies = []
     for j in range(0, len(fileNames)):
         with open(fileNames[j], "r") as f:
@@ -182,11 +178,11 @@ def getSettingsCache():
             activeSettings = uiBack.settings.parseAsJSON(f.read())
             f.close()
             print("Settings cache found")
-        except:
+        except: #! Should catch a specified type of error
             f.close()
             os.remove(cachePath + "settings.txt")
             print("Settings cache was found but couldn't be read, so it was deleted")
-    except:
+    except: #! Should catch a specified type of error
         print("No settings cache found")
 
 def setSettingsCache():
@@ -194,7 +190,7 @@ def setSettingsCache():
         with open(cachePath + "settings.txt", "w") as outfile:
             activeSettings.toJSON(outfile)
         print("Saved settings")
-    except:
+    except: #! Should catch a specified type of error
         print("Failed to save settings")
 
 def openEvent():
@@ -211,7 +207,7 @@ if __name__ == '__main__':
     openEvent()
     uiBackend.startFunc = startSimulation
     uiBackend.stopFunc = stopSimulation
-    uiBackend.snapshotFunc = readLog
-    uiBackend.browseFunc = gatherData
+    uiBackend.snapshotFunc = snapshot
+    uiBackend.browseFunc = gatherBodyData
     uiBackend.closeWindowFunc = closeEvent
     uiBackend.setupUI(activeSettings)

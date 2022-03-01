@@ -117,7 +117,7 @@ class uiBackend:
         for j in range(0, len(fileNames)):
             try:
                 os.remove(self.settings.logPath + fileNames[j])
-            except:
+            except: #! Should catch a specified type of error
                 continue
         
     def collided(self):

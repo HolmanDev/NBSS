@@ -1,7 +1,5 @@
-from base64 import b16encode
-from decimal import DivisionByZero # ?
 import numpy as np
-from libs.vectors import sqrMag, getUnitVectorFast, getUnitVectorFast2, fastMagVec3, fastDistVec3, mag2d
+from libs.vectors import sqrMag3d, unitVec3d, unitVecFastSqr3d, distance3d
 import libs.physics as phy
 import threading
 import time
@@ -9,10 +7,9 @@ import json
 import copy
 import pandas as pd
 from datetime import datetime
-from math import sqrt, floor, pi as pi_const, cos, acos
+import math
+from math import sqrt, floor
 import cProfile, pstats, io
-from skimage.measure import EllipseModel
-from scipy.linalg import expm, norm
 
 class simulation:
     positions = None
@@ -100,82 +97,71 @@ class simulation:
         yearsDelta = floor((self.simTime[1] + secondsDelta) / phy.secondsInYear)
         self.simTime[0] = self.simTime[0] + yearsDelta
         self.simTime[1] = (self.simTime[1] + secondsDelta) % phy.secondsInYear
-        #print(f"{self.simTime[0]},\t{np.linalg.norm(self.bodies[2].pos - self.bodies[0].pos) / phy.au}")
 
-    def M(self, axis, theta):
-        return expm(np.cross(np.eye(3), axis/norm(axis)*theta))
+    # Brings the errors to rest in a valley
+    def valleyErrorCalc(self, error1, error2, lowestErrorDamp, errorDampSharpness):
+        diff = (abs(error1) + abs(error2)) / phy.au
+        a = max(min(1-lowestErrorDamp, 1), 0)
+        b = max(errorDampSharpness, 0)
+        diffError = 1.0 - a / (b * diff * diff + 1.0)
+        error = (error1 + error2) * diffError
+        return error
 
-    def angleBetween(self, u, v):
-        return acos(np.dot(u,v) / (fastMagVec3(u)*fastMagVec3(v)))
-
-    # Iteratively solve for the most accurate velocities
+    # Iteratively solve for the most accurate initial velocities
     def setupOrbits(self, iterations, Kp, Ki, Kd, lowestErrorDamp, errorDampSharpness):
-        from libs.moremath import findParams3PointsConic
+        from libs.moremath import rotate3PointsToPlane, findParams3PointsConic
         n = len(self.bodies)
         centralBodyIndex = [i for i in range(n) if (self.bodies[i].name in self.bodies[i].orbiting)][0]
         allPeris = [b.idealPeri for b in self.bodies]
         del allPeris[centralBodyIndex]
         allPeris.sort()
         lowestPeri = allPeris[0]
+        # Use PID controller to arrive at optimal initial velocities
         lastErrors = [0] * n
         integrals = [0] * n
-        ell = EllipseModel()
         for j in range(iterations):
             for i, body in enumerate(self.bodies):
                 if i == centralBodyIndex: continue
-                a = (body.idealApo + body.idealPeri) / 2
-                orbitingIndices = [i for i in range(n) if (self.bodies[i].name in body.orbiting)]
-                orbitingBodyMasses = [self.bodies[i].mass for i in orbitingIndices]
-                gravParam = phy.G_const * (sum(orbitingBodyMasses) + body.mass)
-                T = 2 * pi_const * sqrt(a * a * a / gravParam) # Ideal period in seconds
+                # Sample point search prerequisites
+                T = body.orbitTime(self.bodies)
                 approxTime = T / (10.0 * phy.secondsInYear) # In years
                 setupTime = [0,0]
-                timestep = (min(body.idealPeri, lowestPeri * 100.0) * phy.secondsInADay) / (phy.au * 64) # Make this smarter
+                timestep = (min(body.idealPeri, lowestPeri * 100.0) * phy.secondsInADay) / (phy.au * 64) #! Make this smarter
                 bodiesCopy = copy.deepcopy(self.bodies) # Copy bodies for simulation so that the original are unchanged.
-                # Gather sample points P, Q and R
-                P, Q, R = np.empty(3) #! Rename to P, Q, R
-                searchingForSecondPoint = True
+                # Find sample points P, Q and R
+                P, Q, R = np.empty(3)
+                searchingForQ = True
                 P = bodiesCopy[i].pos - bodiesCopy[centralBodyIndex].pos # First point found
                 while self.floatFromTime(setupTime) < approxTime:
                     # Search for second point
-                    if(searchingForSecondPoint and self.floatFromTime(setupTime) > approxTime * 0.5):
+                    if(searchingForQ and self.floatFromTime(setupTime) > approxTime * 0.5):
                         Q = bodiesCopy[i].pos - bodiesCopy[centralBodyIndex].pos # Second point found
-                        searchingForSecondPoint = False
+                        searchingForQ = False
                     # Simulate
                     self.setupStep(bodiesCopy, timestep)
-                    # Time #!Really need a better way of stepping forward the time
+                    # Time
                     setupTime[0] = setupTime[0] + floor((setupTime[1] + timestep) / phy.secondsInYear) # Years
                     setupTime[1] = (setupTime[1] + timestep) % phy.secondsInYear # Seconds
                 R = bodiesCopy[i].pos - bodiesCopy[centralBodyIndex].pos # Third point found
-                # Rotate points onto XY plane (Z=0)
-                perp = np.cross(P, R)
-                perp = perp / fastMagVec3(perp)
-                up = np.array([0,0,1])
-                rotationAxis = np.cross(perp, up)
-                angle = self.angleBetween(perp, up)
-                M0 = self.M(rotationAxis, angle)
-                PlanePQR = [np.dot(M0, p) for p in (P, Q, R)]
-                (Px, Py, _), (Qx, Qy, _), (Rx, Ry, _) = PlanePQR
-                # Estimated orbital parameters and errors
-                e, p = findParams3PointsConic(Px, Py, Qx, Qy, Rx, Ry, 1000, body.idealPeri / (20 * phy.au))
+                # Rotate the points around the origin onto a plane
+                (Px, Py, _), (Qx, Qy, _), (Rx, Ry, _) = rotate3PointsToPlane(P, Q, R)
+                # Estimate eccentricity and semi-latus rectum
+                e, p = findParams3PointsConic(Px, Py, Qx, Qy, Rx, Ry, 30, body.idealPeri / (20 * phy.au))
                 print(f"Eccentricity: {e}, semi-latus rectum: {p / phy.au}")
-                eError = (body.idealEcc - e)  * (body.idealSemiLatusRectum / (body.idealEcc * 1000000.0))
-                pError = body.idealSemiLatusRectum - p
-                diff = (abs(eError) + abs(pError)) / phy.au
-                a_ = max(min(1-lowestErrorDamp, 1), 0)
-                b_ = max(errorDampSharpness, 0)
-                diffError = 1.0 - a_ / (b_ * diff * diff + 1.0)
-                error = (eError + pError) * diffError
+                # PID error handling
+                eError = (body.idealEcc - e)  * (body.idealSemiLatRect / (body.idealEcc * 1000000.0))
+                pError = body.idealSemiLatRect - p
+                error = self.valleyErrorCalc(eError, pError, lowestErrorDamp, errorDampSharpness)
                 integrals[i] += error * timestep
                 deriv = (error - lastErrors[i]) / timestep
                 lastErrors[i] = error
                 amount = error * Kp + integrals[i] * Ki + deriv * Kd
                 # Apply control
-                r = fastDistVec3(body.pos, self.bodies[centralBodyIndex].pos)
-                speed = 5000 / r # This is too fast for some..
-                unitVecVel = body.vel / fastMagVec3(body.vel)
+                r = distance3d(body.pos, self.bodies[centralBodyIndex].pos)
+                speed = 5000 / r
+                unitVecVel = unitVec3d(body.vel)
                 body.vel = body.vel + unitVecVel * speed * amount
-                print(f"{j}. Body: {self.bodies[i].name}, eError: {body.idealEcc - e}, \tpError: {pError / phy.au}\tError: {error / phy.au}, \tratio: {eError/pError}")
+                print(f"{j}. Body: {self.bodies[i].name}, eError: {body.idealEcc-e}, \tpError: {pError/phy.au}\tError: {error/phy.au}, \tratio: {eError/pError}")
 
     # Returns an array of the history of positions plus the new ones from the generated data, 
     # containing [snaps] snaps each containing data from [stepsPerSnap] steps taken with a timestep of [timestep].
@@ -274,7 +260,7 @@ class body:
     idealApo = 0.0
     idealPeri = 0.0
     idealEcc = 0.0
-    idealSemiLatusRectum = 0.0
+    idealSemiLatRect = 0.0
     pos = np.array([0.0, 0.0, 0.0])
     vel = np.array([0.0, 0.0, 0.0])
     mass = 1.0 # in solar masses
@@ -288,13 +274,21 @@ class body:
         c = (self.idealApo - self.idealPeri) * 0.5
         a = (self.idealApo + self.idealPeri) * 0.5
         self.idealEcc = c / a
-        self.idealSemiLatusRectum = a * (1.0 - self.idealEcc * self.idealEcc)
+        self.idealSemiLatRect = a * (1.0 - self.idealEcc * self.idealEcc)
 
-    # Get the graviational acceleration on this body generated by another body
-    def gravAcc(self, other):
+    def orbitTime(self, allBodies):
+        a = self.idealSemiLatRect / (1.0 - self.idealEcc * self.idealEcc)
+        orbitingIndices = [i for i in range(len(allBodies)) if (allBodies[i].name in self.orbiting)]
+        orbitingBodyMasses = [allBodies[i].mass for i in orbitingIndices]
+        gravParam = phy.G_const * (sum(orbitingBodyMasses) + self.mass)
+        T = 2 * math.pi * sqrt(a * a * a / gravParam) # Ideal period in seconds
+        return T
+
+    # Get the graviational acceleration on this body generated by another body.
+    def gravAcc(self, other): #! Untested
         selfToOther = other.pos - self.pos
-        sqrR = sqrMag(selfToOther)
-        dir = getUnitVectorFast(selfToOther, sqrR)
+        sqrR = sqrMag3d(selfToOther)
+        dir = unitVecFastSqr3d(selfToOther, sqrR)
         return dir * (phy.G_const * other.mass / sqrR)
 
     # dirBySqr = dir / sqrR
@@ -318,7 +312,7 @@ class body:
             if b.name not in b.orbiting: # If not the central body
                 b.calcEccAndSemiLatusRectum()
             return b
-        except Exception:
+        except Exception: #! Should catch a specified type of error
             raise ValueError('Could not interpret file as body data in json format')
 
 class packet():

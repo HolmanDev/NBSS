@@ -25,7 +25,7 @@ class visualization:
         for n in range(0, len(bodies)):
             try:
                 self.orbitPaths[n] = self.ax.plot(bodies[n].pos[0], bodies[n].pos[1], bodies[n].pos[2])[0]
-            except:
+            except: #! Should catch a specified type of error
                 self.orbitPaths[n] = self.ax.plot(0,0,0)[0]
 
     # Sets the viewing boundries of the 3D plot
@@ -43,13 +43,13 @@ class visualization:
     def getPipeData(self, pipeConnection, delay):
         while True:
             try:
-                while(pipeConnection.poll()): # Might be at risk of overload
+                while(pipeConnection.poll()): #! Might be at risk of overload
                     self.pipeData = pipeConnection.recv()
             finally:
                 time.sleep(delay)
 
-    # Update the plot animation
-    def animUpdate(self, num): # num is the frame
+    # Update the plot animation. num is the frame
+    def animUpdate(self, num):
         if(self.pipeData == []):
             return
 
@@ -69,8 +69,8 @@ class visualization:
             self.orbitPaths[n].set_data(XnY)
             self.orbitPaths[n].set_3d_properties(Z)
 
-    # Visualize the log
-    def readLog(self, path, showNth): # num is the frame
+    # Visualize the log. num is the frame
+    def visualizeLog(self, path, showNth):
         fileNames = [x for x in os.listdir(path) if x.startswith("packet_")]
         if(fileNames == []): return
 
@@ -117,4 +117,4 @@ class visualization:
         receiveThread = threading.Thread(target=self.getPipeData, name='receiver', args=(pipeConnection,1)) # The 2 should be replaced with something
         receiveThread.start()
         self.anim = animation.FuncAnimation(self.fig, self.animUpdate, 1, interval=1000, blit=False)
-        #receiveThread.join()
+        #receiveThread.join() #! should I join receiveThread here, or is it automatically terminated?

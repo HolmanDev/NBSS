@@ -1,16 +1,18 @@
-import numpy
-from math import sqrt, floor
+import numpy as np
+from libs.vectors import mag2d, mag3d, unitVec3d
+from math import sqrt, floor, cos, acos
 from scipy.optimize import fsolve
+from scipy.linalg import expm, norm
 
 # Ellipse integral with resolution n
 def ellipseIntegral(k, n):
     value = 0
     i = 0
-    halfpi = numpy.pi * 0.5
+    halfpi = np.pi * 0.5
     d = halfpi / n
     while i < halfpi:
-        trig = numpy.sin(i)
-        value += numpy.sqrt(1-k*trig*trig) * d
+        trig = np.sin(i)
+        value += np.sqrt(1-k*trig*trig) * d
         i += d
     return value
 
@@ -18,16 +20,31 @@ def ellipseIntegral(k, n):
 def ellipseAmplitude(arc, semimajoraxis, k, n):
     value = 0
     amp = 0
-    d = 2 * numpy.pi / n
+    d = 2 * np.pi / n
     while value < arc / semimajoraxis:
-        trig = numpy.sin(amp)
-        value += numpy.sqrt(1-k*trig*trig) * d
+        trig = np.sin(amp)
+        value += np.sqrt(1-k*trig*trig) * d
         amp += d
     return amp
 
-# Magnitude of 2D vector
-def mag2d(vec2d):
-    return sqrt(vec2d[0] * vec2d[0] + vec2d[1] * vec2d[1])
+# Result is given in radians
+def angleBetween3d(u, v):
+    return acos(np.dot(u,v) / (mag3d(u)*mag3d(v)))
+
+# theta must be in radians
+def rotationMatrixAroundAxis3d(axis, theta):
+        return expm(np.cross(np.eye(3), axis/norm(axis)*theta))
+
+# Cross product of P and R is used to calculate the normal
+def rotate3PointsToPlane(P, Q, R):
+    perp = np.cross(P, R)
+    perp = unitVec3d(perp)
+    up = np.array([0,0,1])
+    rotationAxis = np.cross(perp, up)
+    angle = angleBetween3d(perp, up) # radians
+    M0 = rotationMatrixAroundAxis3d(rotationAxis, angle)
+    PlanePQR = [np.dot(M0, p) for p in (P, Q, R)]
+    return PlanePQR
 
 # ELLIPSE METHOD
 #|P-F| - |Q-F| + |P| - |Q| = 0
@@ -78,54 +95,53 @@ def hyperbolaEquationSystem(x, args):
     return [hyperbolaEquation1(x, args), hyperbolaEquation2(x, args)]
 
 # Find second focus based on three points if a known focus lies in (0,0)
-def findFocus3PointsEllipse(Px, Py, Qx, Qy, Rx, Ry, N, stepSize, allInfo=False): # If focus is really close to the origin, perhaps reconsider
-    sqrtN = sqrt(N)
+def findFocus3PointsEllipse(Px, Py, Qx, Qy, Rx, Ry, searchGridSideRes, gridStepSize, allInfo=False): # If focus is really close to the origin, perhaps reconsider
+    maxAttempts = searchGridSideRes * searchGridSideRes
     midpointX = (Px+Qx+Rx)/3
     midpointY = (Py+Qy+Ry)/3
     attempts = 0
-    while(attempts < N): #! Break this into seperate function?
-        #! Start at midpoint and spiral outward until it exits the bounding box of the ellipse. Then start again, but with higher detail.
-        x = midpointX + (attempts % sqrtN - sqrtN * 0.5) * stepSize
-        y = midpointY + (floor(attempts / sqrtN) - sqrtN) * stepSize
-        output = fsolve(ellipseEquationSystem, args=((Px, Py, Qx, Qy, Rx, Ry),), x0=[x,y], full_output = True) # Finds the roots of f
+    while(attempts < maxAttempts):
+        x = midpointX + (attempts % searchGridSideRes - searchGridSideRes * 0.5) * gridStepSize
+        y = midpointY + (floor(attempts / searchGridSideRes) - searchGridSideRes) * gridStepSize
+        output = fsolve(ellipseEquationSystem, args=((Px, Py, Qx, Qy, Rx, Ry),), x0=[x,y], full_output = True) # Finds the roots of ellipseEquationSystem
         attempts += 1
         if(output[2] == 1): break
-    if(attempts < N):
+    if(attempts < maxAttempts):
         if allInfo:
             return output[0], attempts
         else:
             return output[0]
-    raise ModelFitError("3 Points 1 Focus Ellipse", f"Couldn't find F. Attempted to find a suitible ellipse estimate {N} times to no avail.")
+    raise ModelFitError("3 Points 1 Focus Ellipse", f"Couldn't find F. Attempted to find a suitible ellipse estimate {maxAttempts} times to no avail.")
 
-def findFocus3PointsHyperbola(Px, Py, Qx, Qy, Rx, Ry, N, stepSize, allInfo=False):
-    sqrtN = sqrt(N)
+def findFocus3PointsHyperbola(Px, Py, Qx, Qy, Rx, Ry, searchGridSideRes, stepSize, allInfo=False):
+    maxAttempts = searchGridSideRes * searchGridSideRes
     midpointX = (Px+Qx+Rx)/3
     midpointY = (Py+Qy+Ry)/3
     attempts = 0
-    while(attempts < N): #! Break this into seperate function?
-        #! Start at midpoint and spiral outward until it exits the bounding box of the ellipse. Then start again, but with higher detail.
-        x = midpointX + (attempts % sqrtN - sqrtN * 0.5) * stepSize
-        y = midpointY + (floor(attempts / sqrtN) - sqrtN) * stepSize
-        output = fsolve(hyperbolaEquationSystem, args=((Px, Py, Qx, Qy, Rx, Ry),), x0=[x,y], full_output = True) # Finds the roots of f
+    while(attempts < maxAttempts):
+        x = midpointX + (attempts % searchGridSideRes - searchGridSideRes * 0.5) * stepSize
+        y = midpointY + (floor(attempts / searchGridSideRes) - searchGridSideRes) * stepSize
+        output = fsolve(hyperbolaEquationSystem, args=((Px, Py, Qx, Qy, Rx, Ry),), x0=[x,y], full_output = True) # Finds the roots of hyperbolaEquationSystem
         attempts += 1
         if(output[2] == 1): break
-    if(attempts < N):
+    if(attempts < maxAttempts):
         if allInfo:
             return output[0], attempts
         else:
             return output[0]
-    raise ModelFitError("3 Points 1 Focus Hyperbola", f"Couldn't find F. Attempted to find a suitible hyperbola estimate {N} times to no avail.")
+    raise ModelFitError("3 Points 1 Focus Hyperbola", f"Couldn't find F. Attempted to find a suitible hyperbola estimate {maxAttempts} times to no avail.")
 
-# Eccentricity (e) and semi latus rectum (p) of conic section
-def findParams3PointsConic(Px, Py, Qx, Qy, Rx, Ry, N, stepSize):
+# Eccentricity (e) and semi latus rectum (p) of conic section. The search grid is a square with a side of searchGridSide.
+def findParams3PointsConic(Px, Py, Qx, Qy, Rx, Ry, searchGridSideRes, stepSize):
     Fx, Fy = 0, 0
     try:
-        Fx, Fy = findFocus3PointsEllipse(Px, Py, Qx, Qy, Rx, Ry, N, stepSize)
+        Fx, Fy = findFocus3PointsEllipse(Px, Py, Qx, Qy, Rx, Ry, searchGridSideRes, stepSize)
     except ModelFitError:
         try:
-            Fx, Fy = findFocus3PointsHyperbola(Px, Py, Qx, Qy, Rx, Ry, N, stepSize)
+            Fx, Fy = findFocus3PointsHyperbola(Px, Py, Qx, Qy, Rx, Ry, searchGridSideRes, stepSize)
         except ModelFitError:
-            raise ModelFitError("3 Points 1 Focus Conic Section", f"Couldn't fit specified points to neither an ellipse nor a hyperbola. Tried {N} x 2 times.")
+            raise ModelFitError("3 Points 1 Focus Conic Section", \
+                f"Couldn't fit specified points to neither an ellipse nor a hyperbola. Tried {searchGridSideRes * searchGridSideRes} x 2 times.")
         else:
             c = mag2d((Fx, Fy)) * 0.5
             a = abs(mag2d((Px-Fx, Py-Fy)) - mag2d((Px, Py))) * 0.5

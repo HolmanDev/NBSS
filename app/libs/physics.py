@@ -1,7 +1,6 @@
 # Basic and general physics formulas.
 import numpy
 import libs.vectors as vec
-from decimal import Decimal
 
 # PS: Reload is ctrl+F5
 
@@ -37,7 +36,7 @@ def gravForce(r, m1, m2):
 # Get the gravitional force between two masses as a vector
 def gravForceVector(pos1, pos2, m1, m2):
     r = vec.mag(pos2 - pos1)
-    dir = vec.getUnitVector(pos2 - pos1)
+    dir = vec.unitVecFast3d(pos2 - pos1, r)
     return dir * gravForce(r, m1, m2)
 
 # Get the specific orbital energy using the velocity of object 1
