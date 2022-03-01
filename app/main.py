@@ -20,12 +20,37 @@ sim1 = sim.simulation()
 sim1.minDist = 0 #4.0 * phy.SR #10 * phy.au
 sim1.collisionLogPath = "results/collisions/"
 simulationProcesses = []
+activeBodies = []
+mainQueue = mp.Queue()
 
-def awaitMessage(mainQueue, delay):
+def getBodyData(index):
+    simulationProcesses[index]
+
+def awaitMessage(queue, delay): #! Generalize
     while(True):
-        if(mainQueue.get() == "collided"):
-            uiBackend.collided()
-            break
+        message = queue.get() # Create standard format for message
+        receiver = message[0]
+        if(receiver == "main"):
+            title = message[1]
+            content = message[2]
+            if(title == "collided"):
+                uiBackend.collided()
+                break
+            elif(title == "bodies"):
+                activeBodies = content
+            else:
+                queue.put(message)
+        else:
+            queue.put(message)
+        time.sleep(delay)
+
+def awaitSpecificMessage(queue, delay, listenerName, queryTitle):
+    while(True):
+        message = queue.get() # Create standard format for message
+        receiver, title, content = message
+        if(receiver == listenerName and title == queryTitle):
+            return content
+        queue.put(message)
         time.sleep(delay)
 
 def visualize():
@@ -39,7 +64,6 @@ def visualize():
     vis1.markOrigin("+")
     vis1.uiBackend = uiBackend
     # Setup multiple processes
-    mainQueue = mp.Queue()
     child_conn, parent_conn = mp.Pipe(duplex=False) # Setup pipe connection to communicate between the computation- and graphics-processes
     vis1.animStart(child_conn)
     # Setup simulation
@@ -51,7 +75,7 @@ def visualize():
     calcProcess.start()
     parent_conn.close()
     simulationProcesses.append(calcProcess)
-    awaitMessageThread = threading.Thread(target=awaitMessage, name='awaiter', args=(mainQueue, 1))
+    awaitMessageThread = threading.Thread(target=awaitMessage, name='awaiter', args=(mainQueue, 0.1))
     awaitMessageThread.start()
     # Show the plot (until it is closed)
     vis.plt.show() #! Split into another process?
@@ -59,9 +83,8 @@ def visualize():
 
 # Make this into its own process too.
 def dryRun(path):
-    sim1.setupOrbits(50, activeSettings.Kp, activeSettings.Ki, activeSettings.Kd, activeSettings.lowestErrorDamp, activeSettings.errorDampSharpness)
+    sim1.setupOrbits(10, activeSettings.Kp, activeSettings.Ki, activeSettings.Kd, activeSettings.lowestErrorDamp, activeSettings.errorDampSharpness)
     # Setup multiple processes
-    mainQueue = mp.Queue()
     child_conn, parent_conn = mp.Pipe()
     # Setup simulation
     sim1.positionRebaseInterval = activeSettings.rebaseInterval
@@ -119,11 +142,13 @@ def snapshot(path):
     vis1.setBoundries([0,0,0], activeSettings.zoom)
     vis1.lockedBody = activeSettings.focusBody
     vis1.markOrigin("+")
+    vis1.startAwaitMessageThread(mainQueue, 0.1)
+    activeBodies = sim1.bodies
+    vis1.activeBodies = activeBodies
     vis1.visualizeLog(path, activeSettings.showNth)
     vis.plt.show() #! Split into another process?
 
 def logAndVisualize(path):
-    mainQueue = mp.Queue()
     calcChildConn, calcParentConn = mp.Pipe()
     calcProcess = mp.Process(target=sim1.packetGenLoop, \
         args=(activeSettings.snapsPerPacket, activeSettings.stepsPerSnap, activeSettings.timestep, \

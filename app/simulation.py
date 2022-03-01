@@ -184,9 +184,11 @@ class simulation:
         sendThread.start()
         while(self.state == "default"):
             positions = self.genPositions(snaps, stepsPerSnap, timestep, self.positions)
-            if self.state != "default":
+            mainQueue.put(('vis', 'bodies', self.bodies))
+            mainQueue.put(('main', 'bodies', self.bodies))
+            if self.state != "default": #! Double negative. Fix.
                 sendThread.join()
-                mainQueue.put('collided')
+                mainQueue.put(('main', 'collided', ''))
                 break
             else:
                 # Cut tail
@@ -233,9 +235,11 @@ class simulation:
         sendThread.start()
         while(True):
             packet = self.genPacket(snapsPerPacket, stepsPerSnap, timestep)
+            mainQueue.put(('vis', 'bodies', self.bodies))
+            mainQueue.put(('main', 'bodies', self.bodies))
             if self.state != "default":
                 sendThread.join()
-                mainQueue.put('collided')
+                mainQueue.put(('main', 'collided', ''))
                 break
             else:
                 # Store new packet

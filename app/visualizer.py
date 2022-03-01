@@ -13,11 +13,29 @@ class visualization:
     lockedBody = "" # name of the body in the bodies array. "" = no body
     pipeData = []
     uiBackend = None
+    activeBodies = []
 
     def __init__(self):
         self.fig = plt.figure()
         self.ax = self.fig.add_subplot(projection='3d')
         self.ax.set_box_aspect((1,1,1))
+
+    def awaitMessage(self, queue, delay):
+        while(True):
+            message = queue.get() # Create standard format for message
+            receiver = message[0]
+            if(receiver == "vis"):
+                title = message[1]
+                content = message[2]
+                if(title == "bodies"):
+                    self.activeBodies = content
+            else:
+                queue.put(message)
+            time.sleep(delay)
+
+    def startAwaitMessageThread(self, queue, delay):
+        awaitMessageThread = threading.Thread(target=self.awaitMessage, name='awaiter', args=(queue, delay))
+        awaitMessageThread.start()
 
     # Create orbit paths
     def createOrbitPaths(self, bodies):
@@ -85,7 +103,7 @@ class visualization:
         # Extract and store positions
         positions = [np.empty([3, 0]) for _ in range(numBodies)]
         fileNames.sort(key = lambda x: int(x.split("_")[1]))    
-        #fileNames = fileNames[:1000] # Make variable
+        #fileNames = fileNames[:1000] # Show only the first 1000 logs. #! Make variable
         fileNames = fileNames[0::showNth] # Only show every nth packet
         for fileName in fileNames:
             with open(path + fileName, "r") as f:
@@ -102,12 +120,18 @@ class visualization:
         self.createOrbitPaths(bodies)
         for n in range(numBodies):
             offsetPositions = positions[n]
-            if(self.lockedBody != "" and self.lockedBody in names):
-                #com = np.zeros(3)
-                #for n in range(numBodies):
-                #    com = com + positions[n] * 
+            origin = np.zeros([3, numSnaps])
+            if(self.lockedBody == "" or self.lockedBody not in names): # Empty locked body => com
+                com = np.zeros([3, numSnaps])
+                masses = []
+                for i in range(numBodies):
+                    masses.append(next(b.mass for b in self.activeBodies if b.name == names[i]))
+                    com = com + positions[i] * masses[i]
+                com = com / sum(masses)
+                origin = com
+            else:
                 origin = positions[names.index(self.lockedBody)]
-                offsetPositions = offsetPositions - origin
+            offsetPositions = offsetPositions - origin
             XnY = offsetPositions[0:2, :]
             Z = offsetPositions[2, :]
             self.orbitPaths[n].set_data(XnY)
