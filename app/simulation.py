@@ -15,7 +15,7 @@ class simulation:
     positions = None
     bodies = []
     state = "default"
-    minDist = 0.0
+    collisionDistFactor = 1.5
     queuedPacket = None
     collisionLogPath = ""
     startTime = pd.to_datetime('2000-01-01')
@@ -63,7 +63,9 @@ class simulation:
                 # Velocity at t+1
                 body1.vel = body1.vel + timestep * body2.mass * accNoMass
                 body2.vel = body2.vel - timestep * body1.mass * accNoMass
-                if(r < self.minDist):
+                # Handle collision
+                collisionDist = body1.radius + body2.radius
+                if(r < collisionDist * self.collisionDistFactor):
                     self.state = "collided"
                     self.collisionHandler(body1, body2)
                     return
@@ -258,7 +260,9 @@ class simulation:
             time.sleep(delay)
 
 class body:
-    name = ""
+    name = ""  
+    mass = 1.0 # in solar masses
+    radius = 0.0
     refBodies = [""] # Names of bodies that this body orbits around
     idealApo = 0.0
     idealPeri = 0.0
@@ -266,7 +270,6 @@ class body:
     idealSemiLatRect = 0.0
     pos = np.array([0.0, 0.0, 0.0])
     vel = np.array([0.0, 0.0, 0.0])
-    mass = 1.0 # in solar masses
 
     def __init__(self, mass, pos, vel):
         self.mass = mass

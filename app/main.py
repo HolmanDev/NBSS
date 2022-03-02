@@ -17,7 +17,6 @@ cachePath = "cache/"
 activeSettings = uiBack.settings()
 activeData = uiBack.data()
 sim1 = sim.simulation()
-sim1.minDist = 0 #4.0 * phy.SR #10 * phy.au
 sim1.collisionLogPath = "results/collisions/"
 simulationProcesses = []
 activeBodies = []
@@ -55,9 +54,11 @@ def awaitSpecificMessage(queue, delay, listenerName, queryTitle):
 
 def visualize():
     # Setup visualization
-    sim1.setupOrbits(50, activeSettings.Kp, activeSettings.Ki, activeSettings.Kd, activeSettings.lowestErrorDamp, activeSettings.errorDampSharpness)
+    sim1.setupOrbits(10, activeSettings.Kp, activeSettings.Ki, activeSettings.Kd, activeSettings.lowestErrorDamp, activeSettings.errorDampSharpness)
     sim1.positions = sim1.genPositions(activeSettings.snapsPerFrame, activeSettings.stepsPerSnap, activeSettings.timestep) # Setup simulation by generating the first position
     vis1 = vis.visualization()
+    activeBodies = sim1.bodies
+    vis1.activeBodies = activeBodies
     vis1.createOrbitPaths(sim1.bodies)
     vis1.setBoundries([0,0,0], activeSettings.zoom)
     vis1.lockedBody = activeSettings.focusBody

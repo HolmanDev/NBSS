@@ -79,9 +79,20 @@ class visualization:
         names = self.pipeData[2]
         for n in range(self.pipeData[1]):
             offsetPositions = cachedPositions[n]
-            if(self.lockedBody != "" and self.lockedBody in names):
+            numBodies = len(cachedPositions)
+            numSnaps = len(offsetPositions[0, :])
+            origin = np.zeros([3, numSnaps])
+            if(self.lockedBody == "" or self.lockedBody not in names): # Empty locked body => com
+                com = np.zeros([3, numSnaps])
+                masses = []
+                for i in range(numBodies):
+                    masses.append(next(b.mass for b in self.activeBodies if b.name == names[i]))
+                    com = com + cachedPositions[i] * masses[i]
+                com = com / sum(masses)
+                origin = com
+            else:
                 origin = cachedPositions[names.index(self.lockedBody)]
-                offsetPositions = np.subtract(offsetPositions, origin)
+            offsetPositions = offsetPositions - origin
             XnY = offsetPositions[0:2, :]
             Z = offsetPositions[2, :]
             self.orbitPaths[n].set_data(XnY)
