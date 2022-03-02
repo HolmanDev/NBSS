@@ -111,9 +111,8 @@ class simulation:
     def setupOrbits(self, iterations, Kp, Ki, Kd, lowestErrorDamp, errorDampSharpness):
         from libs.moremath import rotate3PointsToPlane, findParams3PointsConic
         n = len(self.bodies)
-        centralBodyIndex = [i for i in range(n) if (self.bodies[i].name in self.bodies[i].orbiting)][0]
-        allPeris = [b.idealPeri for b in self.bodies]
-        del allPeris[centralBodyIndex]
+        centralBodyIndex = [i for i in range(n) if (self.bodies[i].name in self.bodies[i].refBodies)][0]
+        allPeris = [b.idealPeri for i,b in enumerate(self.bodies) if (i != centralBodyIndex and b.idealPeri > 0)]
         allPeris.sort()
         lowestPeri = allPeris[0]
         # Use PID controller to arrive at optimal initial velocities
@@ -260,7 +259,7 @@ class simulation:
 
 class body:
     name = ""
-    orbiting = [""]
+    refBodies = [""] # Names of bodies that this body orbits around
     idealApo = 0.0
     idealPeri = 0.0
     idealEcc = 0.0
@@ -274,17 +273,21 @@ class body:
         self.pos = pos
         self.vel = vel
 
-    def calcEccAndSemiLatusRectum(self):
-        c = (self.idealApo - self.idealPeri) * 0.5
-        a = (self.idealApo + self.idealPeri) * 0.5
-        self.idealEcc = c / a
-        self.idealSemiLatRect = a * (1.0 - self.idealEcc * self.idealEcc)
+    def calcApoAndPeri(self):
+        a = self.idealSemiLatRect / (1 - self.idealEcc*self.idealEcc)
+        if a < 0: 
+            self.idealApo = -1
+            self.idealPeri = -1
+            return
+        c = self.idealEcc * a
+        self.idealApo = a + c
+        self.idealPeri = a - c
 
     def orbitTime(self, allBodies):
         a = self.idealSemiLatRect / (1.0 - self.idealEcc * self.idealEcc)
-        orbitingIndices = [i for i in range(len(allBodies)) if (allBodies[i].name in self.orbiting)]
-        orbitingBodyMasses = [allBodies[i].mass for i in orbitingIndices]
-        gravParam = phy.G_const * (sum(orbitingBodyMasses) + self.mass)
+        refBodyIndices = [i for i in range(len(allBodies)) if (allBodies[i].name in self.refBodies)]
+        redBodyMasses = [allBodies[i].mass for i in refBodyIndices]
+        gravParam = phy.G_const * (sum(redBodyMasses) + self.mass)
         T = 2 * math.pi * sqrt(a * a * a / gravParam) # Ideal period in seconds
         return T
 
@@ -310,11 +313,11 @@ class body:
                 np.array([float(data['x_pos']),float(data['y_pos']),float(data['z_pos'])]),\
                 np.array([float(data['x_vel']),float(data['y_vel']),float(data['z_vel'])]))
             b.name = data['name']
-            b.orbiting = data['orbiting'].split(',')
-            b.idealApo = float(data['apo'])
-            b.idealPeri = float(data['peri'])
-            if b.name not in b.orbiting: # If not the central body
-                b.calcEccAndSemiLatusRectum()
+            b.radius = float(data['radius'])
+            b.refBodies = data['refBodies'].split(',')
+            b.idealEcc = float(data['ecc'])
+            b.idealSemiLatRect = float(data['semiLatRect'])
+            b.calcApoAndPeri()
             return b
         except Exception: #! Should catch a specified type of error
             raise ValueError('Could not interpret file as body data in json format')

@@ -83,7 +83,7 @@ def visualize():
 
 # Make this into its own process too.
 def dryRun(path):
-    sim1.setupOrbits(10, activeSettings.Kp, activeSettings.Ki, activeSettings.Kd, activeSettings.lowestErrorDamp, activeSettings.errorDampSharpness)
+    sim1.setupOrbits(50, activeSettings.Kp, activeSettings.Ki, activeSettings.Kd, activeSettings.lowestErrorDamp, activeSettings.errorDampSharpness)
     # Setup multiple processes
     child_conn, parent_conn = mp.Pipe()
     # Setup simulation
