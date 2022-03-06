@@ -1,5 +1,5 @@
 import numpy as np
-from libs.vectors import sqrMag3d, unitVec3d, unitVecFastSqr3d, distance3d
+from libs.vectors import mag3d, sqrMag3d, unitVec3d, unitVecFastSqr3d, distance3d
 import libs.physics as phy
 import threading
 import time
@@ -109,60 +109,118 @@ class simulation:
         error = (error1 + error2) * diffError
         return error
 
+    def findPQR(self, bodies, bodyIndex, centralBodyIndex, timestep, approxTime):
+        P, Q, R = np.empty(3)
+        setupTime = [0,0]
+        searchingForQ = True
+        P = bodies[bodyIndex].pos - bodies[centralBodyIndex].pos # First point found
+        while self.floatFromTime(setupTime) < approxTime:
+            # Search for second point
+            if(searchingForQ and self.floatFromTime(setupTime) > approxTime * 0.5):
+                Q = bodies[bodyIndex].pos - bodies[centralBodyIndex].pos # Second point found
+                searchingForQ = False
+            # Simulate
+            self.setupStep(bodies, timestep)
+            # Time
+            setupTime[0] = setupTime[0] + floor((setupTime[1] + timestep) / phy.secondsInYear) # Years
+            setupTime[1] = (setupTime[1] + timestep) % phy.secondsInYear # Seconds
+        R = bodies[bodyIndex].pos - bodies[centralBodyIndex].pos # Third point found
+        return P, Q, R
+
+    def findCOM(self, bodies):
+        totalMass = 0
+        com = np.zeros(3)
+        for b in bodies:
+            totalMass += b.mass
+            com = com + b.pos * b.mass
+        com = com / totalMass
+        return com
+    
+    def findCOMVelocity(self, bodies):
+        totalMass = 0
+        comVel = np.zeros(3)
+        for b in bodies:
+            totalMass += b.mass
+            comVel = comVel + b.vel * b.mass
+        comVel = comVel / totalMass
+        return comVel
+
     # Iteratively solve for the most accurate initial velocities
-    def setupOrbits(self, iterations, Kp, Ki, Kd, lowestErrorDamp, errorDampSharpness):
-        from libs.moremath import rotate3PointsToPlane, findParams3PointsConic
+    def setupOrbits(self, iterations, Kp, Ki, Kd, lowestErrorDamp, errorDampSharpness, doPID=True):
+        from libs.moremath import rotate3PointsToPlane, findParams3PointsEllipse, ModelFitError
         n = len(self.bodies)
         centralBodyIndex = [i for i in range(n) if (self.bodies[i].name in self.bodies[i].refBodies)][0]
         allPeris = [b.idealPeri for i,b in enumerate(self.bodies) if (i != centralBodyIndex and b.idealPeri > 0)]
         allPeris.sort()
         lowestPeri = allPeris[0]
+        for body in self.bodies:
+            refBodies = [b for b in self.bodies if (b.name in body.refBodies)]
+            comVelocity = self.findCOMVelocity(refBodies)
+            body.vel = body.vel + comVelocity
+            print(f"bodyVelocity: {mag3d(body.vel)}")
         # Use PID controller to arrive at optimal initial velocities
+        if(not doPID): return
         lastErrors = [0] * n
         integrals = [0] * n
         for j in range(iterations):
             for i, body in enumerate(self.bodies):
                 if i == centralBodyIndex: continue
-                # Sample point search prerequisites
+                # SEARCH PREREQUISITES
                 T = body.orbitTime(self.bodies)
                 approxTime = T / (10.0 * phy.secondsInYear) # In years
-                setupTime = [0,0]
                 timestep = (min(body.idealPeri, lowestPeri * 100.0) * phy.secondsInADay) / (phy.au * 64) #! Make this smarter
                 bodiesCopy = copy.deepcopy(self.bodies) # Copy bodies for simulation so that the original are unchanged.
-                # Find sample points P, Q and R
-                P, Q, R = np.empty(3)
-                searchingForQ = True
-                P = bodiesCopy[i].pos - bodiesCopy[centralBodyIndex].pos # First point found
-                while self.floatFromTime(setupTime) < approxTime:
-                    # Search for second point
-                    if(searchingForQ and self.floatFromTime(setupTime) > approxTime * 0.5):
-                        Q = bodiesCopy[i].pos - bodiesCopy[centralBodyIndex].pos # Second point found
-                        searchingForQ = False
-                    # Simulate
-                    self.setupStep(bodiesCopy, timestep)
-                    # Time
-                    setupTime[0] = setupTime[0] + floor((setupTime[1] + timestep) / phy.secondsInYear) # Years
-                    setupTime[1] = (setupTime[1] + timestep) % phy.secondsInYear # Seconds
-                R = bodiesCopy[i].pos - bodiesCopy[centralBodyIndex].pos # Third point found
-                # Rotate the points around the origin onto a plane
-                (Px, Py, _), (Qx, Qy, _), (Rx, Ry, _) = rotate3PointsToPlane(P, Q, R)
-                # Estimate eccentricity and semi-latus rectum
-                e, p = findParams3PointsConic(Px, Py, Qx, Qy, Rx, Ry, 30, body.idealPeri / (20 * phy.au))
+                # SAMPLE POINTS
+                P, Q, R = self.findPQR(bodiesCopy, i, centralBodyIndex, timestep, approxTime) # Find sample points P, Q and R
+                (Px, Py, _), (Qx, Qy, _), (Rx, Ry, _) = rotate3PointsToPlane(P, Q, R) # Rotate the points around the origin onto a plane
+                # ESTIMATE ECCENTRICITY AND SEMI-LATUS RECTUM
+                # Try to find e and p. If ellipse fitting fails, set velocity to escape velocity and go down until it the ellipse fitting succeeds.
+                try:
+                    e, p = findParams3PointsEllipse(Px, Py, Qx, Qy, Rx, Ry, 30, body.idealPeri / (20 * phy.au))
+                except ModelFitError:
+                    bodiesCopy = copy.deepcopy(self.bodies)
+                    refBodies = [b for b in self.bodies if (b.name in body.refBodies)]
+                    refBodiesMass = sum([b.mass for b in refBodies])
+                    com = self.findCOM(refBodies) # center of mass
+                    d = mag3d(body.pos - com)
+                    escapeSpeed = sqrt(2 * phy.G_const * refBodiesMass / d)
+                    velMag = mag3d(body.vel)
+                    comVelocity = self.findCOMVelocity(refBodies)
+                    bodiesCopy[i].vel = (0.75 * escapeSpeed / velMag) * body.vel + comVelocity
+                    e, p = catchOrbit(0.85, bodiesCopy, i, centralBodyIndex, timestep, approxTime) #! Make factor variable in the UI
+                # Catch the orbit by slowly lowering the speed by a factor
+                def catchOrbit(factor, bodies, i, centralBodyIndex, timestep, approxTime): #! Should regulate error relative to moving COM!!!!!
+                    print("Trying to catch")
+                    velocity = bodies[i].vel
+                    P, Q, R = self.findPQR(bodies, i, centralBodyIndex, timestep, approxTime)
+                    (Px, Py, _), (Qx, Qy, _), (Rx, Ry, _) = rotate3PointsToPlane(P, Q, R)
+                    try:
+                        e, p = findParams3PointsEllipse(Px, Py, Qx, Qy, Rx, Ry, 30, body.idealPeri / (20 * phy.au))
+                    except ModelFitError:
+                        bodies = copy.deepcopy(self.bodies)
+                        bodies[i].vel = factor * velocity # Lower velocity
+                        print(f"velocity: {mag3d(bodies[i].vel)}")
+                        catchOrbit(factor, bodies, i, centralBodyIndex, timestep, approxTime)
+                    else:
+                        return e, p
+                #e, p = findParams3PointsConic(Px, Py, Qx, Qy, Rx, Ry, 30, body.idealPeri / (20 * phy.au))  #!Hyperbolic fitting bad. Try to get eccentricity to below 1.
+                #! ^ Yeah, switch this to just try to find the ellipse. If it doesn't, set the speed to the calculated escape velocity and go down 5% at a time.
+                #! The escape velocity can be calculated using the formula sqrt(2 * G * M / d) where M is the mass of the primary body and d is the distance
                 print(f"Eccentricity: {e}, semi-latus rectum: {p / phy.au}")
-                # PID error handling
-                eError = (body.idealEcc - e)  * (body.idealSemiLatRect / (body.idealEcc * 1000000.0))
+                # PID ERROR HANDLING
+                eError = (body.idealEcc - e) * (body.idealSemiLatRect / (body.idealEcc * 1000000.0)) #! Eccentricty error should be weighted based on orbit size
                 pError = body.idealSemiLatRect - p
                 error = self.valleyErrorCalc(eError, pError, lowestErrorDamp, errorDampSharpness)
                 integrals[i] += error * timestep
                 deriv = (error - lastErrors[i]) / timestep
                 lastErrors[i] = error
                 amount = error * Kp + integrals[i] * Ki + deriv * Kd
-                # Apply control
+                # APPLY CONTROL
                 r = distance3d(body.pos, self.bodies[centralBodyIndex].pos)
                 speed = 5000 / r
                 unitVecVel = unitVec3d(body.vel)
                 body.vel = body.vel + unitVecVel * speed * amount
-                print(f"{j}. Body: {self.bodies[i].name}, eError: {body.idealEcc-e}, \tpError: {pError/phy.au}\tError: {error/phy.au}, \tratio: {eError/pError}")
+                print(f"{j}. Body: {self.bodies[i].name}, eError: {body.idealEcc-e}, \tpError: {pError/phy.au}\tError: {error/phy.au}, \tspeed: {speed}")
 
     # Returns an array of the history of positions plus the new ones from the generated data, 
     # containing [snaps] snaps each containing data from [stepsPerSnap] steps taken with a timestep of [timestep].
@@ -287,10 +345,10 @@ class body:
         self.idealPeri = a - c
 
     def orbitTime(self, allBodies):
-        a = self.idealSemiLatRect / (1.0 - self.idealEcc * self.idealEcc)
+        a = self.idealSemiLatRect / (1.0 - self.idealEcc*self.idealEcc)
         refBodyIndices = [i for i in range(len(allBodies)) if (allBodies[i].name in self.refBodies)]
-        redBodyMasses = [allBodies[i].mass for i in refBodyIndices]
-        gravParam = phy.G_const * (sum(redBodyMasses) + self.mass)
+        refBodyMasses = [allBodies[i].mass for i in refBodyIndices]
+        gravParam = phy.G_const * (sum(refBodyMasses) + self.mass)
         T = 2 * math.pi * sqrt(a * a * a / gravParam) # Ideal period in seconds
         return T
 

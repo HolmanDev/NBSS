@@ -54,7 +54,7 @@ def awaitSpecificMessage(queue, delay, listenerName, queryTitle):
 
 def visualize():
     # Setup visualization
-    sim1.setupOrbits(10, activeSettings.Kp, activeSettings.Ki, activeSettings.Kd, activeSettings.lowestErrorDamp, activeSettings.errorDampSharpness)
+    sim1.setupOrbits(50, activeSettings.Kp, activeSettings.Ki, activeSettings.Kd, activeSettings.lowestErrorDamp, activeSettings.errorDampSharpness, doPID=False) #! Create option
     sim1.positions = sim1.genPositions(activeSettings.snapsPerFrame, activeSettings.stepsPerSnap, activeSettings.timestep) # Setup simulation by generating the first position
     vis1 = vis.visualization()
     activeBodies = sim1.bodies

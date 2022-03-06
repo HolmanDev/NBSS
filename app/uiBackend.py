@@ -226,7 +226,7 @@ class settings:
 
     # Advanced
     rebaseInterval = 100000.0
-    posSendDelay = 2 # Delay between position deliveries
+    posSendDelay = 2 # Delay between position deliveries #! Make delay variable
     packSendDelay = 2 # Delay between packet deliveries
 
     def toJSON(self, outfile):

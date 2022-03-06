@@ -149,7 +149,7 @@ class visualization:
             self.orbitPaths[n].set_3d_properties(Z)
 
     def animStart(self, pipeConnection):
-        receiveThread = threading.Thread(target=self.getPipeData, name='receiver', args=(pipeConnection,1)) # The 2 should be replaced with something
+        receiveThread = threading.Thread(target=self.getPipeData, name='receiver', args=(pipeConnection, 1)) #! Make delay variable
         receiveThread.start()
-        self.anim = animation.FuncAnimation(self.fig, self.animUpdate, 1, interval=1000, blit=False)
+        self.anim = animation.FuncAnimation(self.fig, self.animUpdate, 1, interval=1000, blit=False) #! Make interval variable
         #receiveThread.join() #! should I join receiveThread here, or is it automatically terminated?

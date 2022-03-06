@@ -131,6 +131,15 @@ def findFocus3PointsHyperbola(Px, Py, Qx, Qy, Rx, Ry, searchGridSideRes, stepSiz
             return output[0]
     raise ModelFitError("3 Points 1 Focus Hyperbola", f"Couldn't find F. Attempted to find a suitible hyperbola estimate {maxAttempts} times to no avail.")
 
+def findParams3PointsEllipse(Px, Py, Qx, Qy, Rx, Ry, searchGridSideRes, stepSize):
+    Fx, Fy = findFocus3PointsEllipse(Px, Py, Qx, Qy, Rx, Ry, searchGridSideRes, stepSize)
+    c = mag2d((Fx, Fy)) * 0.5
+    a = (mag2d((Px-Fx, Py-Fy)) + mag2d((Px, Py))) * 0.5
+    b = sqrt(a*a - c*c)
+    e = c / a
+    p = b * b / a
+    return e, p
+
 # Eccentricity (e) and semi latus rectum (p) of conic section. The search grid is a square with a side of searchGridSide.
 def findParams3PointsConic(Px, Py, Qx, Qy, Rx, Ry, searchGridSideRes, stepSize):
     Fx, Fy = 0, 0
