@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from libs.vectors import mag3d, sqrMag3d, unitVec3d, unitVecFastSqr3d, distance3d
 import libs.physics as phy
@@ -37,6 +38,7 @@ class simulation:
         anchorBody.vel = np.zeros(3)
 
     def collisionHandler(self, body1, body2):
+        os.makedirs(self.collisionLogPath, exist_ok=True)
         now = datetime.now()
         filename = f"{self.collisionLogPath}collisions_{now.year}-{now.month}-{now.day}T{now.hour}-{now.minute}-{now.second}.txt"
         with open(filename, "w+") as f:
