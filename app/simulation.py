@@ -162,6 +162,7 @@ class simulation:
             print(f"bodyVelocity: {mag3d(body.vel)}")
         # Use PID controller to arrive at optimal initial velocities
         if(not doPID): return
+        return
         lastErrors = [0] * n
         integrals = [0] * n
         for j in range(iterations):
