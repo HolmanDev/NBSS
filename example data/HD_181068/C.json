@@ -1,8 +1,8 @@
 {
-  "name": "C",
+  "name": "Bb",
   "mass": 1.7299689e+30,
   "radius": 556800000,
-  "refBodies": "A,B",
+  "refBodies": "Ba",
   "ecc": 0.0,
   "semiLatRect": 3324792001.8817687,
   "x_pos": 1130310872.4095635,
