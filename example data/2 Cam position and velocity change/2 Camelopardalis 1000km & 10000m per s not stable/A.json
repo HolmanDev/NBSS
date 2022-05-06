@@ -1,0 +1,14 @@
+{
+  "name": "A",
+  "mass": 3.8576318e+30,
+  "radius": 847380000,
+  "refBodies": "A",
+  "ecc": 0,
+  "semiLatRect": 0,
+  "x_pos": 0.0,
+  "y_pos": 0.0,
+  "z_pos": 0.0,
+  "x_vel": 0.0,
+  "y_vel": 0.0,
+  "z_vel": 0.0
+}
